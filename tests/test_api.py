@@ -15,6 +15,7 @@ Notes:
 """
 
 import os
+import json
 import sys
 import tempfile
 import threading
@@ -207,7 +208,8 @@ class TestSharedDazScriptRuntime(unittest.TestCase):
         r = execute(
             script=iife(
                 "return {version:DSS.version,hasNodes:!!DSS.nodes,"
-                "hasRender:!!DSS.render,hasVisibility:!!DSS.visibility};"
+                "hasRender:!!DSS.render,hasScene:!!DSS.scene,"
+                "hasVisibility:!!DSS.visibility};"
             )
         )
         body = r.json()
@@ -218,6 +220,7 @@ class TestSharedDazScriptRuntime(unittest.TestCase):
                 "version": 1,
                 "hasNodes": True,
                 "hasRender": True,
+                "hasScene": True,
                 "hasVisibility": True,
             },
         )
@@ -254,6 +257,42 @@ class TestSharedDazScriptRuntime(unittest.TestCase):
         self.assertFalse(result["state"]["renderViewport"])
         self.assertIsInstance(result["caps"]["maxSamples"], (int, float))
         self.assertIsInstance(result["caps"]["maxTime"], (int, float))
+
+    def test_scene_load_has_explicit_mode_and_verified_file_identity(self):
+        scene_path = ""
+        try:
+            with tempfile.NamedTemporaryFile(suffix=".duf", delete=False) as temp:
+                scene_path = os.path.abspath(temp.name)
+            os.unlink(scene_path)
+            encoded_path = json.dumps(scene_path.replace("\\", "/"))
+            script = iife(
+                f"var path={encoded_path}; Scene.clear(); "
+                "var n=new DzNode(); n.setName('DSSSceneIdentityNode'); "
+                "n.setLabel('DSS Scene Identity Node'); Scene.addNode(n); "
+                "Scene.saveScene(path,new DzFileIOSettings()); Scene.clear(); "
+                "try { "
+                " var explicit=''; try { DSS.scene.load(path,{}); } catch(e) { explicit=String(e); } "
+                " var identity=DSS.scene.load(path,{replace:true,minNodes:1}); "
+                " var mismatch=''; try { DSS.scene.require({path:path+'.wrong'}); } "
+                " catch(e2) { mismatch=String(e2); } "
+                " return {identity:identity,explicit:explicit,mismatch:mismatch}; "
+                "} finally { Scene.clear(); }"
+            )
+            r = execute(script=script)
+            body = r.json()
+            self.assertTrue(body["success"], body.get("error"))
+            result = body["result"]
+            self.assertEqual(result["identity"]["nodeCount"], 1)
+            self.assertTrue(result["identity"]["fileExists"])
+            self.assertEqual(
+                os.path.normcase(os.path.normpath(result["identity"]["filename"])),
+                os.path.normcase(os.path.normpath(scene_path)),
+            )
+            self.assertIn("replace must be explicitly", result["explicit"])
+            self.assertIn("expected file", result["mismatch"])
+        finally:
+            if scene_path and os.path.exists(scene_path):
+                os.unlink(scene_path)
 
     def test_node_lookup_reports_missing_and_ambiguous_matches(self):
         script = iife(

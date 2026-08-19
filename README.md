@@ -2472,6 +2472,13 @@ back exactly. `setIrayCaps({maxSamples, maxTime})` likewise sets named renderer
 properties and verifies them. Render execution, canvas policy, and application
 acceptance checks remain above this shared settings layer.
 
+`DSS.scene.identity()` reports Studio's current filename (raw and normalized),
+whether it exists, node count, and dirty state. `load(path, spec)` requires
+callers to state `replace: true` or `replace: false`, rejects a missing source,
+and can require `minNodes`; replacement loads also verify that Studio reports
+the requested file afterward. `require(spec)` applies the same filename and
+minimum-node assertions to an already-loaded scene.
+
 `DSS.report` owns the structured JSONL observation vocabulary. `path()` reads
 the job's injected report path; `emit(event)`, `progress(...)`, `log(...)`, and
 `output(...)` append events without allowing an observation failure to break
