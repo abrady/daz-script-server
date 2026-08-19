@@ -226,6 +226,139 @@ var DSS = (function () {
                         (descriptions.length ? ". Nearby: " + descriptions.join("; ") : ""));
     }
 
+    function renderContext() {
+        var manager = App.getRenderMgr();
+        if (!manager) throw new Error("DSS.render: render manager unavailable");
+        var options = manager.getRenderOptions();
+        if (!options) throw new Error("DSS.render: render options unavailable");
+        return { manager: manager, options: options };
+    }
+
+    function readRenderState() {
+        var context = renderContext();
+        var options = context.options;
+        var size = options.imageSize;
+        var viewport = null;
+        try { viewport = !!options.renderViewport; } catch (e) {}
+        var camera = null;
+        try { camera = options.camera ? describeNode(options.camera) : null; } catch (e2) {}
+        return {
+            outputPath: String(options.renderImgFilename || ""),
+            width: Number(size.width),
+            height: Number(size.height),
+            renderImgToId: Number(options.renderImgToId),
+            renderType: Number(options.renderType),
+            directToFile: Number(options.renderImgToId) === Number(options.DirectToFile),
+            software: Number(options.renderType) === Number(options.Software),
+            renderViewport: viewport,
+            camera: camera,
+            activeRendererClass: context.manager.getActiveRenderer() ?
+                String(context.manager.getActiveRenderer().className()) : null
+        };
+    }
+
+    function configureRender(spec) {
+        spec = spec || {};
+        var context = renderContext();
+        var options = context.options;
+        if (spec.outputPath !== undefined && spec.outputPath !== null) {
+            options.renderImgFilename = String(spec.outputPath);
+        }
+        if ((spec.width === undefined) !== (spec.height === undefined)) {
+            throw new Error("DSS.render.configure: width and height must be supplied together");
+        }
+        if (spec.width !== undefined) {
+            var width = Number(spec.width), height = Number(spec.height);
+            if (!(width > 0) || !(height > 0)) {
+                throw new Error("DSS.render.configure: width and height must be positive");
+            }
+            options.imageSize = new QSize(width, height);
+        }
+        if (spec.directToFile === true) options.renderImgToId = options.DirectToFile;
+        if (spec.software === true) options.renderType = options.Software;
+        if (spec.renderViewport !== undefined && spec.renderViewport !== null) {
+            try { options.renderViewport = !!spec.renderViewport; }
+            catch (viewportError) {
+                throw new Error("DSS.render.configure: renderViewport unsupported: " + viewportError);
+            }
+        }
+        if (spec.camera !== undefined && spec.camera !== null) options.camera = spec.camera;
+        options.applyChanges();
+
+        var actual = readRenderState();
+        if (spec.outputPath !== undefined && spec.outputPath !== null &&
+            actual.outputPath !== String(spec.outputPath)) {
+            throw new Error("DSS.render.configure: output path failed readback");
+        }
+        if (spec.width !== undefined &&
+            (actual.width !== Number(spec.width) || actual.height !== Number(spec.height))) {
+            throw new Error("DSS.render.configure: image size failed readback");
+        }
+        if (spec.directToFile === true && !actual.directToFile) {
+            throw new Error("DSS.render.configure: direct-to-file failed readback");
+        }
+        if (spec.software === true && !actual.software) {
+            throw new Error("DSS.render.configure: software mode failed readback");
+        }
+        if (spec.renderViewport !== undefined && spec.renderViewport !== null &&
+            actual.renderViewport !== !!spec.renderViewport) {
+            throw new Error("DSS.render.configure: renderViewport failed readback");
+        }
+        if (spec.camera !== undefined && spec.camera !== null) {
+            var wantedCamera = describeNode(spec.camera);
+            if (!actual.camera || actual.camera.path !== wantedCamera.path ||
+                actual.camera.name !== wantedCamera.name) {
+                throw new Error("DSS.render.configure: camera failed readback");
+            }
+        }
+        return actual;
+    }
+
+    function irayProperty(holder, name) {
+        if (!holder || typeof holder.getNumProperties !== "function") return null;
+        for (var i = 0; i < holder.getNumProperties(); i++) {
+            var property = holder.getProperty(i);
+            if (!property) continue;
+            var propertyName = property.getName ? String(property.getName()) : String(property.name);
+            var propertyLabel = property.getLabel ? String(property.getLabel()) : "";
+            if (propertyName === name || propertyLabel === name) return property;
+        }
+        return null;
+    }
+
+    function setIrayCaps(spec) {
+        spec = spec || {};
+        var context = renderContext();
+        var renderer = context.manager.getActiveRenderer();
+        if (!renderer || typeof renderer.getPropertyHolder !== "function") {
+            throw new Error("DSS.render.setIrayCaps: active renderer has no property holder");
+        }
+        var holder = renderer.getPropertyHolder();
+        var samples = irayProperty(holder, "Max Samples");
+        var time = irayProperty(holder, "Max Time");
+        if (spec.maxSamples !== undefined && spec.maxSamples !== null) {
+            if (!samples) throw new Error("DSS.render.setIrayCaps: Max Samples unavailable");
+            samples.setValue(Number(spec.maxSamples));
+        }
+        if (spec.maxTime !== undefined && spec.maxTime !== null) {
+            if (!time) throw new Error("DSS.render.setIrayCaps: Max Time unavailable");
+            time.setValue(Number(spec.maxTime));
+        }
+        var actual = {
+            maxSamples: samples ? Number(samples.getValue()) : null,
+            maxTime: time ? Number(time.getValue()) : null
+        };
+        if (spec.maxSamples !== undefined && spec.maxSamples !== null &&
+            actual.maxSamples !== Number(spec.maxSamples)) {
+            throw new Error("DSS.render.setIrayCaps: Max Samples failed readback");
+        }
+        if (spec.maxTime !== undefined && spec.maxTime !== null &&
+            actual.maxTime !== Number(spec.maxTime)) {
+            throw new Error("DSS.render.setIrayCaps: Max Time failed readback");
+        }
+        return actual;
+    }
+
     function reportPath() {
         try {
             if (typeof getArguments !== "function") return "";
@@ -303,6 +436,11 @@ var DSS = (function () {
             inspect: inspectNodes,
             find: findNode,
             require: requireNode
+        },
+        render: {
+            read: readRenderState,
+            configure: configureRender,
+            setIrayCaps: setIrayCaps
         },
         visibility: { read: readVisibility, set: setVisibility },
         report: {

@@ -1408,15 +1408,13 @@ class TestDazRenderSettingsScriptGeneration(unittest.TestCase):
         self.assertIn("imageSize", script)
         self.assertNotIn("getImageSize", script)
 
-    def test_set_resolution_uses_imageSize_and_applyChanges(self):
+    def test_set_resolution_delegates_verified_render_configuration(self):
         rs, client = self._make_render(None)
         rs.set_resolution(1920, 1080)
         script = client.execute.call_args[0][0]
-        self.assertIn("imageSize", script)
-        self.assertIn("new QSize", script)
+        self.assertIn("DSS.render.configure", script)
         self.assertIn("1920", script)
         self.assertIn("1080", script)
-        self.assertIn("applyChanges", script)
 
     def test_output_path_getter_uses_renderImgFilename(self):
         rs, client = self._make_render("/tmp/render.png")
@@ -1426,14 +1424,13 @@ class TestDazRenderSettingsScriptGeneration(unittest.TestCase):
         self.assertIn("renderImgFilename", script)
         self.assertNotIn("getImageFilename", script)
 
-    def test_output_path_setter_uses_renderImgFilename(self):
+    def test_output_path_setter_delegates_verified_render_configuration(self):
         rs, client = self._make_render(None)
         rs.output_path = "/tmp/out.png"
         script = client.execute.call_args[0][0]
-        self.assertIn("renderImgFilename", script)
+        self.assertIn("DSS.render.configure", script)
+        self.assertIn("outputPath", script)
         self.assertIn("/tmp/out.png", script)
-        self.assertNotIn("setImageFilename", script)
-        self.assertIn("applyChanges", script)
 
     def test_render_uses_doRender(self):
         from dazpy._render import RenderOutcome
@@ -1446,7 +1443,31 @@ class TestDazRenderSettingsScriptGeneration(unittest.TestCase):
         )
         script = client.execute.call_args[0][0]
         self.assertIn("doRender", script)
+        self.assertIn("DSS.render.configure", script)
+        self.assertIn("directToFile: true", script)
+        self.assertIn("renderViewport: false", script)
         self.assertNotIn("mgr.render()", script)
+
+    def test_iray_caps_delegate_to_verified_shared_runtime(self):
+        rs, client = self._make_render(None)
+        rs.max_samples = 64
+        self.assertIn(
+            "DSS.render.setIrayCaps({maxSamples:64})",
+            client.execute.call_args[0][0],
+        )
+        rs.max_time_secs = 12
+        self.assertIn(
+            "DSS.render.setIrayCaps({maxTime:12})",
+            client.execute.call_args[0][0],
+        )
+
+    def test_quality_preset_sets_both_caps_in_one_shared_call(self):
+        rs, client = self._make_render(None)
+        rs.set_quality_preset("draft")
+        first_script = client.execute.call_args_list[0].args[0]
+        self.assertIn("DSS.render.setIrayCaps", first_script)
+        self.assertIn("maxSamples", first_script)
+        self.assertIn("maxTime", first_script)
 
     def test_render_uses_renderFinished_signal_not_doRender_return_value(self):
         # Regression: doRender()'s own return value is undocumented in the

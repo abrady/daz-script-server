@@ -2464,6 +2464,14 @@ null for an optional miss but throws rather than choosing the first duplicate;
 the node's label, internal name, class, and hierarchy path. `dazpy` node
 lookups and the locators they return use this contract automatically.
 
+`DSS.render.read()` returns the persistent render options that affect where and
+how a still is produced. `configure(spec)` applies and verifies any supplied
+output path, image dimensions, direct-to-file/software mode, viewport override,
+or camera; paired dimensions are required and every requested field must read
+back exactly. `setIrayCaps({maxSamples, maxTime})` likewise sets named renderer
+properties and verifies them. Render execution, canvas policy, and application
+acceptance checks remain above this shared settings layer.
+
 `DSS.report` owns the structured JSONL observation vocabulary. `path()` reads
 the job's injected report path; `emit(event)`, `progress(...)`, `log(...)`, and
 `output(...)` append events without allowing an observation failure to break
