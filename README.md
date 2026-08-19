@@ -1261,6 +1261,7 @@ from dazpy.exceptions import (
     ScriptRuntimeError,    # DazScript runtime exception
     TimeoutError,          # HTTP request timed out
     NodeNotFoundError,     # scene.find_node / find_skeleton raised
+    NodeAmbiguousError,    # exact scene-node query matched duplicates
 )
 
 try:
@@ -2441,6 +2442,14 @@ the named channels, updates every matching property on both the node and its
 object, calls the corresponding node methods, updates the scene, and throws if
 a requested channel is unsupported or fails readback.
 
+`DSS.nodes` owns exact scene-node resolution. Queries explicitly select
+`{label: value}`, `{name: value}`, or `{either: value}`. `find(query)` returns
+null for an optional miss but throws rather than choosing the first duplicate;
+`require(query)` also throws on a miss with scene size and nearby labels/names.
+`inspect(query)` returns those diagnostics as data, and `describe(node)` returns
+the node's label, internal name, class, and hierarchy path. `dazpy` node
+lookups and the locators they return use this contract automatically.
+
 `DSS.report` owns the structured JSONL observation vocabulary. `path()` reads
 the job's injected report path; `emit(event)`, `progress(...)`, `log(...)`, and
 `output(...)` append events without allowing an observation failure to break
@@ -2448,14 +2457,14 @@ the scene job. Each accepts an optional explicit report path as its last
 argument for a recipe that already resolved the path itself.
 
 ```javascript
-var garment = Scene.findNodeByLabel("Jacket");
+var garment = DSS.nodes.require({label: "Jacket"});
 DSS.visibility.set(garment, {
     general: false,
     viewport: false,
     render: false
 });
 
-var collider = Scene.findNodeByLabel("Collision Plane");
+var collider = DSS.nodes.require({label: "Collision Plane"});
 DSS.visibility.set(collider, {
     general: false,
     viewport: false,

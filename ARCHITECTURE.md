@@ -182,9 +182,10 @@ flowchart TD
   every inline, file-backed, registered, synchronous, or asynchronous script
 - Owns only small cross-project DAZ invariants that queued `.dsa` files and
   Python callers must share; it must not contain application assets or policy
-- Exposes a versioned `DSS` global. Version 1 owns complete visibility reads
-  and writes across node/object properties and the four independent channels,
-  plus structured progress/log/output JSONL emission for observable jobs
+- Exposes a versioned `DSS` global. Version 1 owns exact node lookup with
+  missing/duplicate diagnostics, complete visibility reads and writes across
+  node/object properties and the four independent channels, and structured
+  progress/log/output JSONL emission for observable jobs
 - `dazpy` methods call this runtime rather than carrying a second DazScript
   implementation; file-backed recipes can call the same contract directly
 

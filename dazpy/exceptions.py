@@ -104,6 +104,10 @@ class NodeNotFoundError(DazError):
     """Raised when a requested scene node, bone, or skeleton cannot be found."""
 
 
+class NodeAmbiguousError(NodeNotFoundError):
+    """Raised when a scene-node query has more than one exact match."""
+
+
 class AsyncExecutionError(DazError):
     """Raised when an async request fails, is cancelled, or times out while polling.
 
