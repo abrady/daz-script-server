@@ -301,12 +301,14 @@ class TestScriptBuilder(unittest.TestCase):
     def test_find_node_by_name(self):
         ident = NodeIdentifier("Genesis9", kind="name")
         expr = ScriptBuilder.find_node_expr(ident)
+        self.assertIn('DSS.nodes.find({name:"Genesis9"})', expr)
         self.assertIn('Scene.findNode(', expr)
         self.assertIn('"Genesis9"', expr)
 
     def test_find_node_by_label(self):
         ident = NodeIdentifier("Genesis 9", kind="label")
         expr = ScriptBuilder.find_node_expr(ident)
+        self.assertIn('DSS.nodes.find({label:"Genesis 9"})', expr)
         self.assertIn('Scene.findNodeByLabel(', expr)
         self.assertIn('"Genesis 9"', expr)
 
@@ -460,16 +462,38 @@ class TestDazScene(unittest.TestCase):
         self.assertEqual(scene.num_nodes(), 5)
 
     def test_find_node_success(self):
-        client = _make_client(True)
+        client = _make_client({
+            "sceneNodeCount": 1,
+            "matchCount": 1,
+            "matches": [{"path": "Genesis 9"}],
+            "nearby": [],
+        })
         scene = DazScene(client)
         node = scene.find_node("Genesis9")
         self.assertIsInstance(node, DazNode)
+        self.assertIn("DSS.nodes.inspect", client.execute.call_args[0][0])
 
     def test_find_node_not_found(self):
-        client = _make_client(False)
+        client = _make_client({
+            "sceneNodeCount": 2,
+            "matchCount": 0,
+            "matches": [],
+            "nearby": [{"label": "Genesis 9", "name": "Genesis9"}],
+        })
         scene = DazScene(client)
-        with self.assertRaises(exceptions.NodeNotFoundError):
+        with self.assertRaisesRegex(exceptions.NodeNotFoundError, "Nearby.*Genesis 9"):
             scene.find_node("NonExistent")
+
+    def test_find_node_ambiguous(self):
+        client = _make_client({
+            "sceneNodeCount": 2,
+            "matchCount": 2,
+            "matches": [{"path": "Figure A"}, {"path": "Figure B"}],
+            "nearby": [],
+        })
+        scene = DazScene(client)
+        with self.assertRaisesRegex(exceptions.NodeAmbiguousError, "Figure A; Figure B"):
+            scene.find_node_by_label("Genesis 9")
 
     def test_all_node_transforms(self):
         data = [{"name": "n1", "label": "Node 1", "position": [0, 0, 0], "rotation": [0, 0, 0], "visible": True}]

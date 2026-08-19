@@ -206,12 +206,44 @@ class TestSharedDazScriptRuntime(unittest.TestCase):
     def test_runtime_version_and_visibility_contract_are_available(self):
         r = execute(
             script=iife(
-                "return {version:DSS.version, hasVisibility:!!DSS.visibility};"
+                "return {version:DSS.version,hasNodes:!!DSS.nodes,"
+                "hasVisibility:!!DSS.visibility};"
             )
         )
         body = r.json()
         self.assertTrue(body["success"], body.get("error"))
-        self.assertEqual(body["result"], {"version": 1, "hasVisibility": True})
+        self.assertEqual(
+            body["result"],
+            {"version": 1, "hasNodes": True, "hasVisibility": True},
+        )
+
+    def test_node_lookup_reports_missing_and_ambiguous_matches(self):
+        script = iife(
+            "var a=new DzNode(),b=new DzNode(); "
+            "a.setName('DSSLookupAlpha'); a.setLabel('DSS Lookup Alpha'); "
+            "b.setName('DSSLookupBeta'); b.setLabel('DSS Lookup Alpha'); "
+            "Scene.addNode(a); Scene.addNode(b); "
+            "try { "
+            " var exact=DSS.nodes.inspect({name:'DSSLookupAlpha'}); "
+            " var missing=DSS.nodes.inspect({label:'DSS Lookup Alpa'}); "
+            " var ambiguous=''; var required=''; "
+            " try { DSS.nodes.find({label:'DSS Lookup Alpha'}); } catch(e) { ambiguous=String(e); } "
+            " try { DSS.nodes.require({name:'DSSLookupMissing'}); } catch(e) { required=String(e); } "
+            " return {exact:exact,missing:missing,ambiguous:ambiguous,required:required}; "
+            "} finally { Scene.removeNode(a); Scene.removeNode(b); }"
+        )
+        r = execute(script=script)
+        body = r.json()
+        self.assertTrue(body["success"], body.get("error"))
+        result = body["result"]
+        self.assertEqual(result["exact"]["matchCount"], 1)
+        self.assertEqual(result["exact"]["matches"][0]["label"], "DSS Lookup Alpha")
+        self.assertEqual(result["missing"]["matchCount"], 0)
+        self.assertEqual(result["missing"]["nearby"][0]["label"], "DSS Lookup Alpha")
+        self.assertIn("ambiguous label", result["ambiguous"])
+        self.assertIn("matched 2 nodes", result["ambiguous"])
+        self.assertIn("not found among", result["required"])
+        self.assertIn("Nearby:", result["required"])
 
     def test_runtime_report_helpers_feed_async_job_observation(self):
         report_path = ""

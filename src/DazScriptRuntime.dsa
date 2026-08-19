@@ -90,6 +90,142 @@ var DSS = (function () {
         return actual;
     }
 
+    function normalizeNodeQuery(query) {
+        if (typeof query === "string") query = { either: query };
+        query = query || {};
+        var keys = ["label", "name", "either"];
+        var selected = "";
+        for (var i = 0; i < keys.length; i++) {
+            if (!query.hasOwnProperty(keys[i]) ||
+                query[keys[i]] === undefined || query[keys[i]] === null) continue;
+            if (selected) {
+                throw new Error("DSS.nodes: query must specify exactly one of label, name, or either");
+            }
+            selected = keys[i];
+        }
+        if (!selected || String(query[selected]).length === 0) {
+            throw new Error("DSS.nodes: query must specify a non-empty label, name, or either");
+        }
+        return { by: selected, value: String(query[selected]) };
+    }
+
+    function describeNode(node) {
+        if (!node) return null;
+        var path = [];
+        var cursor = node;
+        var guard = 0;
+        while (cursor && guard < 64) {
+            path.unshift(String(cursor.getLabel ? cursor.getLabel() : cursor.getName()));
+            cursor = cursor.getNodeParent ? cursor.getNodeParent() : null;
+            guard++;
+        }
+        return {
+            name: String(node.getName()),
+            label: String(node.getLabel()),
+            className: node.className ? String(node.className()) : "DzNode",
+            path: path.join(" / ")
+        };
+    }
+
+    function nodeMatchesNormalized(query) {
+        var result = [];
+        for (var i = 0; i < Scene.getNumNodes(); i++) {
+            var node = Scene.getNode(i);
+            if (!node) continue;
+            var label = String(node.getLabel());
+            var name = String(node.getName());
+            if ((query.by === "label" && label === query.value) ||
+                (query.by === "name" && name === query.value) ||
+                (query.by === "either" && (label === query.value || name === query.value))) {
+                result.push(node);
+            }
+        }
+        return result;
+    }
+
+    function editDistance(left, right) {
+        left = String(left).toLowerCase();
+        right = String(right).toLowerCase();
+        var previous = [];
+        var current = [];
+        for (var j = 0; j <= right.length; j++) previous[j] = j;
+        for (var i = 1; i <= left.length; i++) {
+            current = [i];
+            for (var k = 1; k <= right.length; k++) {
+                var replace = previous[k - 1] + (left.charAt(i - 1) === right.charAt(k - 1) ? 0 : 1);
+                current[k] = Math.min(previous[k] + 1, current[k - 1] + 1, replace);
+            }
+            previous = current;
+        }
+        return previous[right.length];
+    }
+
+    function nearbyNodes(query, limit) {
+        var ranked = [];
+        for (var i = 0; i < Scene.getNumNodes(); i++) {
+            var node = Scene.getNode(i);
+            if (!node) continue;
+            var description = describeNode(node);
+            var values = query.by === "label" ? [description.label] :
+                         query.by === "name" ? [description.name] :
+                         [description.label, description.name];
+            var score = editDistance(query.value, values[0]);
+            for (var v = 1; v < values.length; v++) {
+                score = Math.min(score, editDistance(query.value, values[v]));
+            }
+            ranked.push({ score: score, node: description });
+        }
+        ranked.sort(function (a, b) { return a.score - b.score; });
+        var result = [];
+        for (var r = 0; r < ranked.length && r < limit; r++) result.push(ranked[r].node);
+        return result;
+    }
+
+    function formatNode(node) {
+        return "label='" + node.label + "', name='" + node.name +
+               "', class='" + node.className + "', path='" + node.path + "'";
+    }
+
+    function inspectNodes(query) {
+        var normalized = normalizeNodeQuery(query);
+        var matches = nodeMatchesNormalized(normalized);
+        var descriptions = [];
+        for (var i = 0; i < matches.length; i++) descriptions.push(describeNode(matches[i]));
+        return {
+            query: normalized,
+            sceneNodeCount: Scene.getNumNodes(),
+            matchCount: descriptions.length,
+            matches: descriptions,
+            nearby: descriptions.length ? [] : nearbyNodes(normalized, 5)
+        };
+    }
+
+    function findNode(query) {
+        var normalized = normalizeNodeQuery(query);
+        var matches = nodeMatchesNormalized(normalized);
+        if (!matches.length) return null;
+        if (matches.length > 1) {
+            var descriptions = [];
+            for (var i = 0; i < matches.length; i++) descriptions.push(formatNode(describeNode(matches[i])));
+            throw new Error("DSS.nodes.find: ambiguous " + normalized.by + " '" +
+                            normalized.value + "' matched " + matches.length +
+                            " nodes: " + descriptions.join("; "));
+        }
+        return matches[0];
+    }
+
+    function requireNode(query) {
+        var normalized = normalizeNodeQuery(query);
+        var node = findNode(query);
+        if (node) return node;
+        var nearby = nearbyNodes(normalized, 5);
+        var descriptions = [];
+        for (var i = 0; i < nearby.length; i++) descriptions.push(formatNode(nearby[i]));
+        throw new Error("DSS.nodes.require: " + normalized.by + " '" + normalized.value +
+                        "' not found among " + Scene.getNumNodes() + " scene nodes" +
+                        (descriptions.length ? ". Nearby: " + descriptions.join("; ") : ""));
+    }
+
     function reportPath() {
         try {
             if (typeof getArguments !== "function") return "";
@@ -162,6 +298,12 @@ var DSS = (function () {
 
     return {
         version: 1,
+        nodes: {
+            describe: describeNode,
+            inspect: inspectNodes,
+            find: findNode,
+            require: requireNode
+        },
         visibility: { read: readVisibility, set: setVisibility },
         report: {
             path: reportPath,

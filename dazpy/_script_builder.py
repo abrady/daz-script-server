@@ -23,8 +23,15 @@ class ScriptBuilder:
     @staticmethod
     def find_node_expr(identifier: "NodeIdentifier") -> str:  # noqa: F821
         if identifier.kind == "label":
-            return f"Scene.findNodeByLabel({json.dumps(identifier.value)})"
-        return f"Scene.findNode({json.dumps(identifier.value)})"
+            query = f"{{label:{json.dumps(identifier.value)}}}"
+            fallback = f"Scene.findNodeByLabel({json.dumps(identifier.value)})"
+        else:
+            query = f"{{name:{json.dumps(identifier.value)}}}"
+            fallback = f"Scene.findNode({json.dumps(identifier.value)})"
+        return (
+            "(typeof DSS !== 'undefined' && DSS.nodes ? "
+            f"DSS.nodes.find({query}) : {fallback})"
+        )
 
     @staticmethod
     def node_body(identifier: "NodeIdentifier", body: str) -> str:  # noqa: F821

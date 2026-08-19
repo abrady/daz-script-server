@@ -78,13 +78,27 @@ class DazScene:
         Raises:
             NodeNotFoundError: If no node with that name exists in the scene.
         """
-        from .exceptions import NodeNotFoundError
+        from .exceptions import NodeAmbiguousError, NodeNotFoundError
         node = DazNode(self._client, NodeIdentifier(name, kind="name"))
         exists = ScriptBuilder.iife(
-            f"return !!Scene.findNode({ScriptBuilder.escape_string(name)});"
+            f"return DSS.nodes.inspect({{name:{ScriptBuilder.escape_string(name)}}});"
         )
-        if not self._client.execute(exists).value:
-            raise NodeNotFoundError(f"Node not found: {name!r}")
+        diagnostic = self._client.execute(exists).value
+        if diagnostic["matchCount"] == 0:
+            nearby = ", ".join(
+                f"{item['label']!r} ({item['name']!r})"
+                for item in diagnostic["nearby"]
+            )
+            raise NodeNotFoundError(
+                f"Node name not found: {name!r} among {diagnostic['sceneNodeCount']} "
+                f"scene nodes" + (f". Nearby: {nearby}" if nearby else "")
+            )
+        if diagnostic["matchCount"] > 1:
+            matches = "; ".join(item["path"] for item in diagnostic["matches"])
+            raise NodeAmbiguousError(
+                f"Node name is ambiguous: {name!r} matched "
+                f"{diagnostic['matchCount']} nodes: {matches}"
+            )
         return node
 
     def find_node_by_label(self, label: str) -> DazNode:
@@ -102,12 +116,26 @@ class DazScene:
         Raises:
             NodeNotFoundError: If no node with that label exists.
         """
-        from .exceptions import NodeNotFoundError
+        from .exceptions import NodeAmbiguousError, NodeNotFoundError
         exists = ScriptBuilder.iife(
-            f"return !!Scene.findNodeByLabel({ScriptBuilder.escape_string(label)});"
+            f"return DSS.nodes.inspect({{label:{ScriptBuilder.escape_string(label)}}});"
         )
-        if not self._client.execute(exists).value:
-            raise NodeNotFoundError(f"Node with label not found: {label!r}")
+        diagnostic = self._client.execute(exists).value
+        if diagnostic["matchCount"] == 0:
+            nearby = ", ".join(
+                f"{item['label']!r} ({item['name']!r})"
+                for item in diagnostic["nearby"]
+            )
+            raise NodeNotFoundError(
+                f"Node label not found: {label!r} among {diagnostic['sceneNodeCount']} "
+                f"scene nodes" + (f". Nearby: {nearby}" if nearby else "")
+            )
+        if diagnostic["matchCount"] > 1:
+            matches = "; ".join(item["path"] for item in diagnostic["matches"])
+            raise NodeAmbiguousError(
+                f"Node label is ambiguous: {label!r} matched "
+                f"{diagnostic['matchCount']} nodes: {matches}"
+            )
         # Keep kind="label" — nodes with the same asset type share the same internal
         # name, so resolving to getName() would collapse distinct nodes into one.
         return DazNode(self._client, NodeIdentifier(label, kind="label"))
