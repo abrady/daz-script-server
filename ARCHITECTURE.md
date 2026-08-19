@@ -30,6 +30,7 @@ graph TD
             RV["RequestValidator"]
             RP["RequestProcessor"]
             ARM["AsyncRequestManager"]
+            DSR["DazScriptRuntime<br/>(injected DSS global)"]
         end
 
         subgraph Infra["Infrastructure"]
@@ -49,6 +50,7 @@ graph TD
     Pane --> Met
     Pane --> RV
     RV --> RP
+    DSR -.-> RP
     RP -->|Main thread| DAZ
     RP --> ARM
     ARM -->|BlockingQueuedConnection| Pane
@@ -130,7 +132,7 @@ flowchart TD
     F -->|invalid| R401[HTTP 401]
     F -->|ok| G{Input valid?}
     G -->|invalid| R400[HTTP 400]
-    G -->|ok| H[Wrap in IIFE, inject args]
+    G -->|ok| H[Inject args and shared DSS runtime]
     H --> I[Capture print output]
     I --> J[DzScript::execute]
     J --> K[Update metrics, write log]
@@ -174,6 +176,17 @@ flowchart TD
 - Long-poll support: waiting `GET /requests/:id/result?wait=true` calls block
   in `QWaitCondition` until the result is available or the timeout fires
 
+### DazScriptRuntime
+
+- `src/DazScriptRuntime.dsa` is embedded as a Qt resource and injected before
+  every inline, file-backed, registered, synchronous, or asynchronous script
+- Owns only small cross-project DAZ invariants that queued `.dsa` files and
+  Python callers must share; it must not contain application assets or policy
+- Exposes a versioned `DSS` global. Version 1 owns complete visibility reads
+  and writes across node/object properties and the four independent channels
+- `dazpy` methods call this runtime rather than carrying a second DazScript
+  implementation; file-backed recipes can call the same contract directly
+
 ---
 
 ## Data Flow: Script Arguments
@@ -187,6 +200,7 @@ Client JSON body
        │
        ▼
   Script wrapping:
+    DSS = <embedded shared runtime>
     (function(){
       // user script
     }).call(null, __args)

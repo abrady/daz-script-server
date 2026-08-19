@@ -1,0 +1,5 @@
+<RCC>
+    <qresource prefix="/dazscript_runtime">
+        <file alias="runtime.dsa">DazScriptRuntime.dsa</file>
+    </qresource>
+</RCC>

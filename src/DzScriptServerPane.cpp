@@ -107,6 +107,25 @@ struct ScriptRunResult {
 	QStringList output;   // SDK6 only — see below; SDK4 still uses the debugMsg signal capture
 };
 
+static QString dazScriptRuntimeSource()
+{
+	static QString source;
+	static bool loaded = false;
+	if (!loaded) {
+		loaded = true;
+		QFile runtime(":/dazscript_runtime/runtime.dsa");
+		if (runtime.open(QIODevice::ReadOnly | QIODevice::Text)) {
+			source = QString::fromUtf8(runtime.readAll());
+			runtime.close();
+		} else {
+			// A missing compiled resource is a broken plugin build. Fail every
+			// script honestly rather than silently removing the shared contract.
+			source = "throw new Error('DazScriptServer runtime resource is missing');";
+		}
+	}
+	return source;
+}
+
 static ScriptRunResult runDazScript(DzScript* script, const QVariantMap& argsMap)
 {
 	ScriptRunResult r;
@@ -131,21 +150,23 @@ static ScriptRunResult runDazScript(DzScript* script, const QVariantMap& argsMap
 		JsonStd::variantToJson(QVariant(script->getFilename())));
 	QString codeLiteral = QString::fromStdString(
 		"\"" + JsonStd::escape(JsonStd::qstrToStd(script->getCode())) + "\"");
+	QString runtime = dazScriptRuntimeSource();
 	QString shimmed = QString(
 		"var __dss_output = [];\n"
 		"function print(msg) { __dss_output.push(String(msg)); }\n"
 		"function getArguments(){ return %1; }\n"
 		"function getScriptFileName(){ return %2; }\n"
+		"%3\n"
 		"var __dss_result = null, __dss_error = null, __dss_errorLine = 0;\n"
 		"try {\n"
-		"  __dss_result = eval(%3);\n"
+		"  __dss_result = eval(%4);\n"
 		"} catch (e) {\n"
 		"  __dss_error = (e && e.message !== undefined) ? String(e.message) : String(e);\n"
 		"  __dss_errorLine = (e && e.lineNumber) ? e.lineNumber : 0;\n"
 		"}\n"
 		"JSON.stringify({ result: __dss_result, output: __dss_output, "
 		"error: __dss_error, errorLine: __dss_errorLine });"
-	).arg(argsJson, filenameJson, codeLiteral);
+	).arg(argsJson, filenameJson, runtime, codeLiteral);
 
 	QJSValue evalResult = script->evaluate(shimmed);
 	if (evalResult.isError()) {
@@ -180,8 +201,8 @@ static ScriptRunResult runDazScript(DzScript* script, const QVariantMap& argsMap
 	QVariantList argsList;
 	argsList << QVariant(argsMap);
 	QString argsJson = QString::fromStdString(JsonStd::variantToJson(QVariant(argsList)));
-	QString shimmed = QString("function getArguments(){ return %1; }\n%2")
-		.arg(argsJson, script->getCode());
+	QString shimmed = QString("function getArguments(){ return %1; }\n%2\n%3")
+		.arg(argsJson, dazScriptRuntimeSource(), script->getCode());
 	script->setCode(shimmed);
 	if (script->execute()) {
 		r.success = true;

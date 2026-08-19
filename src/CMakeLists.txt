@@ -32,6 +32,7 @@ add_library(DazScriptServer SHARED
 	DzPackageInputsDialog.cpp
 	DzPackageImporter.cpp
 	package_runner.qrc
+	dazscript_runtime.qrc
 	httplib.h
 	../include/DzScriptServerPane.h
 	../include/AsyncRequestManager.h

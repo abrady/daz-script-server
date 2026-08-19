@@ -1,0 +1,97 @@
+// Shared DazScript runtime injected by DazScriptServer before every script.
+//
+// This is the lowest reusable layer for DAZ invariants that file-backed jobs
+// and typed dazpy callers must share. Keep story and application policy out.
+var DSS = (function () {
+    function properties(node, label) {
+        var result = [];
+        var holders = [node];
+        if (node && node.getObject && node.getObject()) holders.push(node.getObject());
+        for (var h = 0; h < holders.length; h++) {
+            var holder = holders[h];
+            if (!holder || typeof holder.getNumProperties !== "function") continue;
+            for (var p = 0; p < holder.getNumProperties(); p++) {
+                var prop = holder.getProperty(p);
+                if (prop && String(prop.getLabel()) === label) result.push(prop);
+            }
+        }
+        return result;
+    }
+
+    function readChannel(node, label, getter) {
+        var props = properties(node, label);
+        var value = null;
+        if (props.length) {
+            value = !!props[0].getValue();
+            for (var i = 1; i < props.length; i++) {
+                if (!!props[i].getValue() !== value) {
+                    throw new Error("Visibility properties disagree on '" +
+                                    String(node.getLabel()) + "': " + label);
+                }
+            }
+        } else if (getter && typeof node[getter] === "function") {
+            value = !!node[getter]();
+        }
+        return { value: value, propertyCount: props.length };
+    }
+
+    function readVisibility(node) {
+        if (!node) throw new Error("DSS.visibility.read: no node");
+        var general = readChannel(node, "Visible", "isVisible");
+        var viewport = readChannel(node, "Visible in Viewport", "isVisibleInViewport");
+        var render = readChannel(node, "Visible in Render", "isVisibleInRender");
+        var simulation = readChannel(node, "Visible in Simulation", null);
+        return {
+            general: general.value,
+            viewport: viewport.value,
+            render: render.value,
+            simulation: simulation.value,
+            propertyCounts: {
+                general: general.propertyCount,
+                viewport: viewport.propertyCount,
+                render: render.propertyCount,
+                simulation: simulation.propertyCount
+            }
+        };
+    }
+
+    function setChannel(node, spec, key, label, setter) {
+        var wanted = spec[key];
+        if (wanted === undefined || wanted === null) return;
+        var props = properties(node, label);
+        var hasSetter = setter && typeof node[setter] === "function";
+        if (!props.length && !hasSetter) {
+            throw new Error("Visibility channel not supported on '" +
+                            String(node.getLabel()) + "': " + label);
+        }
+        if (hasSetter) node[setter](!!wanted);
+        for (var i = 0; i < props.length; i++) props[i].setValue(wanted ? 1 : 0);
+    }
+
+    function setVisibility(node, spec) {
+        if (!node) throw new Error("DSS.visibility.set: no node");
+        spec = spec || {};
+        setChannel(node, spec, "general", "Visible", "setVisible");
+        setChannel(node, spec, "viewport", "Visible in Viewport", "setVisibleInViewport");
+        setChannel(node, spec, "render", "Visible in Render", "setVisibleInRender");
+        setChannel(node, spec, "simulation", "Visible in Simulation", null);
+        Scene.update();
+
+        var actual = readVisibility(node);
+        var keys = ["general", "viewport", "render", "simulation"];
+        for (var i = 0; i < keys.length; i++) {
+            var key = keys[i];
+            if (spec[key] !== undefined && spec[key] !== null &&
+                actual[key] !== !!spec[key]) {
+                throw new Error("Visibility channel would not retain value on '" +
+                                String(node.getLabel()) + "': " + key);
+            }
+        }
+        return actual;
+    }
+
+    return {
+        version: 1,
+        visibility: { read: readVisibility, set: setVisibility }
+    };
+})();

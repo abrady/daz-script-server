@@ -2974,6 +2974,75 @@ class TestDazNodeAdditionalQueries(unittest.TestCase):
         self.assertIn("setVisibleInViewport", script)
         self.assertIn("false", script)
 
+    def test_visibility_state_reads_all_channels_in_one_call(self):
+        from dazpy import VisibilityState
+
+        node, client = self._node(
+            {
+                "general": True,
+                "viewport": True,
+                "render": False,
+                "simulation": None,
+            }
+        )
+        result = node.visibility_state()
+        self.assertEqual(result, VisibilityState(True, True, False, None))
+        script = client.execute.call_args[0][0]
+        self.assertIn("DSS.visibility.read(_node)", script)
+        self.assertEqual(client.execute.call_count, 1)
+
+    def test_visibility_state_returns_none_for_missing_node(self):
+        node, _client = self._node(None)
+        self.assertIsNone(node.visibility_state())
+
+    def test_set_visibility_sets_requested_channels_and_verifies_readback(self):
+        from dazpy import VisibilityState
+
+        node, client = self._node(
+            {
+                "general": False,
+                "viewport": False,
+                "render": False,
+                "simulation": True,
+            }
+        )
+        result = node.set_visibility(
+            general=False,
+            viewport=False,
+            render=False,
+            simulation=True,
+        )
+        self.assertEqual(result, VisibilityState(False, False, False, True))
+        script = client.execute.call_args[0][0]
+        self.assertIn('"general": false', script)
+        self.assertIn('"viewport": false', script)
+        self.assertIn('"render": false', script)
+        self.assertIn('"simulation": true', script)
+        self.assertIn("DSS.visibility.set(_node", script)
+        self.assertEqual(client.execute.call_count, 1)
+
+    def test_set_visibility_preserves_omitted_channels(self):
+        node, client = self._node(
+            {
+                "general": True,
+                "viewport": False,
+                "render": True,
+                "simulation": None,
+            }
+        )
+        node.set_visibility(render=True)
+        script = client.execute.call_args[0][0]
+        self.assertIn('"general": null', script)
+        self.assertIn('"viewport": null', script)
+        self.assertIn('"render": true', script)
+        self.assertIn('"simulation": null', script)
+
+    def test_set_visibility_requires_shared_server_runtime(self):
+        node, client = self._node(None)
+        node.set_visibility(simulation=True)
+        script = client.execute.call_args[0][0]
+        self.assertIn("DazScriptServer runtime does not provide visibility", script)
+
     def test_bounding_box_calls_getWSBoundingBox(self):
         bb = {"min": {"x": -1.0, "y": 0.0, "z": -1.0}, "max": {"x": 1.0, "y": 2.0, "z": 1.0}}
         node, client = self._node(bb)

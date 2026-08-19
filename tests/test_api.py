@@ -200,6 +200,56 @@ class TestScriptExecution(unittest.TestCase):
         self.assertIn("Line", body.get("error", ""))
 
 
+class TestSharedDazScriptRuntime(unittest.TestCase):
+    """Cross-project DazScript facts injected before every executed script."""
+
+    def test_runtime_version_and_visibility_contract_are_available(self):
+        r = execute(
+            script=iife(
+                "return {version:DSS.version, hasVisibility:!!DSS.visibility};"
+            )
+        )
+        body = r.json()
+        self.assertTrue(body["success"], body.get("error"))
+        self.assertEqual(body["result"], {"version": 1, "hasVisibility": True})
+
+    def test_visibility_sets_independent_channels_and_restores_node(self):
+        script = iife(
+            "var n=new DzNode(); "
+            "n.setName('DSSVisibilityContractTest'); "
+            "n.setLabel('DSS Visibility Contract Test'); "
+            "Scene.addNode(n); "
+            "try { "
+            "  var before=DSS.visibility.read(n); "
+            "  var hidden=DSS.visibility.set(n,{general:false,viewport:false,render:false}); "
+            "  var restored=DSS.visibility.set(n,{general:true,viewport:true,render:true}); "
+            "  return {before:before,hidden:hidden,restored:restored}; "
+            "} finally { Scene.removeNode(n); }"
+        )
+        r = execute(script=script)
+        body = r.json()
+        self.assertTrue(body["success"], body.get("error"))
+        result = body["result"]
+        self.assertTrue(result["before"]["simulation"])
+        self.assertEqual(
+            [
+                result["hidden"]["general"],
+                result["hidden"]["viewport"],
+                result["hidden"]["render"],
+            ],
+            [False, False, False],
+        )
+        self.assertEqual(
+            [
+                result["restored"]["general"],
+                result["restored"]["viewport"],
+                result["restored"]["render"],
+            ],
+            [True, True, True],
+        )
+        self.assertTrue(result["restored"]["simulation"])
+
+
 # ─── Args passing ─────────────────────────────────────────────────────────────
 
 class TestArgsPassing(unittest.TestCase):

@@ -191,6 +191,26 @@ skeleton; `reset_transforms()` zeroes a node's local position/rotation and
 resets scale to 1.0; `zero_figure()` drives every bone rotation and morph
 to zero while leaving the figure's root transform untouched by default.
 
+### 👁️ Complete node visibility
+
+DAZ nodes carry four independent switches: general, viewport, render, and
+simulation visibility. `DazNode.visibility_state()` reads all four in one call;
+`DazNode.set_visibility()` changes only the channels named by the caller and
+verifies their readback before returning. This prevents a general-visible node
+from remaining render-hidden and lets a collider stay simulation-visible while
+being hidden from the viewport and renderer.
+
+```python
+state = garment.visibility_state()
+garment.set_visibility(general=False, viewport=False, render=False)
+collider.set_visibility(general=False, viewport=False, render=False,
+                        simulation=True)
+```
+
+Both methods call the same injected `DSS.visibility` DazScript runtime used by
+file-backed recipes; the Python SDK is a typed caller, not a second copy of the
+visibility rules.
+
 ### 📐 dazpy.math3.AxisRemap — coordinate-space conversion
 
 A generic signed-axis-permutation converter for `Vec3`/`Quat`/
@@ -2407,6 +2427,39 @@ All examples include error handling, argument passing, and output capture.
 ---
 
 ## Writing Scripts
+
+### Shared `DSS` runtime
+
+DazScriptServer injects a versioned `DSS` object before every inline,
+file-backed, registered, or asynchronous script. It is the shared home for
+small DAZ invariants that must behave identically in Python-driven automation
+and long-running `.dsa` recipes.
+
+`DSS.visibility.read(node)` returns general, viewport, render, and simulation
+visibility plus property counts. `DSS.visibility.set(node, spec)` changes only
+the named channels, updates every matching property on both the node and its
+object, calls the corresponding node methods, updates the scene, and throws if
+a requested channel is unsupported or fails readback.
+
+```javascript
+var garment = Scene.findNodeByLabel("Jacket");
+DSS.visibility.set(garment, {
+    general: false,
+    viewport: false,
+    render: false
+});
+
+var collider = Scene.findNodeByLabel("Collision Plane");
+DSS.visibility.set(collider, {
+    general: false,
+    viewport: false,
+    render: false,
+    simulation: true
+});
+```
+
+Treat `DSS` as a server-owned global. Application-specific assets, poses,
+paths, and acceptance criteria do not belong in this runtime.
 
 ### Accessing Arguments
 
