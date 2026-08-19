@@ -213,6 +213,41 @@ class TestSharedDazScriptRuntime(unittest.TestCase):
         self.assertTrue(body["success"], body.get("error"))
         self.assertEqual(body["result"], {"version": 1, "hasVisibility": True})
 
+    def test_runtime_report_helpers_feed_async_job_observation(self):
+        report_path = ""
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".jsonl", delete=False, encoding="utf-8"
+            ) as report:
+                report_path = os.path.abspath(report.name)
+
+            r = async_execute(
+                script=iife(
+                    "DSS.report.progress(1,2,'setup','ready'); "
+                    "DSS.report.log('shared runtime','info','contract-test'); "
+                    "DSS.report.output('C:/renders/shared.png','image','shared'); "
+                    "DSS.report.progress(2,2,'done','complete'); "
+                    "return DSS.report.path();"
+                ),
+                report_file=report_path,
+            )
+            self.assertEqual(r.status_code, 200)
+            body = get_result(r.json()["request_id"], wait=True, timeout=15).json()
+            self.assertEqual(body["status"], "completed")
+            self.assertEqual(
+                os.path.normcase(os.path.normpath(body["result"])),
+                os.path.normcase(os.path.normpath(report_path)),
+            )
+            observation = body["observation"]
+            self.assertEqual(observation["progress"]["phase"], "done")
+            self.assertEqual(observation["log_total"], 1)
+            self.assertEqual(
+                observation["output_manifest"]["outputs"][0]["label"], "shared"
+            )
+        finally:
+            if report_path and os.path.exists(report_path):
+                os.unlink(report_path)
+
     def test_visibility_sets_independent_channels_and_restores_node(self):
         script = iife(
             "var n=new DzNode(); "

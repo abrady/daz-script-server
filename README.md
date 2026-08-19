@@ -2455,6 +2455,12 @@ the named channels, updates every matching property on both the node and its
 object, calls the corresponding node methods, updates the scene, and throws if
 a requested channel is unsupported or fails readback.
 
+`DSS.report` owns the structured JSONL observation vocabulary. `path()` reads
+the job's injected report path; `emit(event)`, `progress(...)`, `log(...)`, and
+`output(...)` append events without allowing an observation failure to break
+the scene job. Each accepts an optional explicit report path as its last
+argument for a recipe that already resolved the path itself.
+
 ```javascript
 var garment = Scene.findNodeByLabel("Jacket");
 DSS.visibility.set(garment, {
