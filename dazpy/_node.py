@@ -28,6 +28,21 @@ class NodeIdentifier:
     kind: str = "name"  # "name" or "label"
 
 
+@dataclass(frozen=True)
+class VisibilityState:
+    """The four independent visibility channels carried by a DAZ node.
+
+    ``simulation`` is ``None`` when the node has no ``Visible in Simulation``
+    property. The other channels fall back to their corresponding node method
+    when a display property is absent.
+    """
+
+    general: bool
+    viewport: bool
+    render: bool
+    simulation: bool | None
+
+
 class DazNode(DazElement):
     """Proxy for a ``DzNode`` in the active DAZ Studio scene.
 
@@ -675,6 +690,80 @@ class DazNode(DazElement):
         flag = "true" if on else "false"
         script = ScriptBuilder.node_body(self._identifier, f"_node.setVisibleInViewport({flag});")
         self._client.execute(script)
+
+    def visibility_state(self) -> VisibilityState | None:
+        """Read all independent visibility channels in one server round-trip."""
+        script = ScriptBuilder.node_body(
+            self._identifier,
+            """
+            if (typeof DSS === "undefined" || !DSS.visibility) {
+                throw new Error("DazScriptServer runtime does not provide visibility");
+            }
+            return DSS.visibility.read(_node);
+            """,
+        )
+        value = self._client.execute(script).value
+        if value is None:
+            return None
+        return VisibilityState(
+            general=bool(value["general"]),
+            viewport=bool(value["viewport"]),
+            render=bool(value["render"]),
+            simulation=(
+                None if value.get("simulation") is None else bool(value["simulation"])
+            ),
+        )
+
+    def set_visibility(
+        self,
+        *,
+        general: bool | None = None,
+        viewport: bool | None = None,
+        render: bool | None = None,
+        simulation: bool | None = None,
+    ) -> VisibilityState | None:
+        """Set selected visibility channels atomically and verify their readback.
+
+        DAZ nodes carry separate general, viewport, render, and simulation
+        switches. Setting only ``visible`` does not repair a stale render flag,
+        while hiding a simulation collider generally must leave its simulation
+        flag enabled. This method makes those choices explicit, applies them in
+        one script, and raises inside DAZ if a requested channel is unsupported
+        or does not retain the requested value.
+
+        Omit a channel to preserve its current value. To show or hide an
+        ordinary renderable node completely, pass the same value for
+        ``general``, ``viewport``, and ``render``. Request ``simulation`` only
+        for nodes that expose ``Visible in Simulation``.
+        """
+        wanted = json.dumps(
+            {
+                "general": general,
+                "viewport": viewport,
+                "render": render,
+                "simulation": simulation,
+            }
+        )
+        script = ScriptBuilder.node_body(
+            self._identifier,
+            f"""
+            if (typeof DSS === "undefined" || !DSS.visibility) {{
+                throw new Error("DazScriptServer runtime does not provide visibility");
+            }}
+            return DSS.visibility.set(_node, {wanted});
+            """,
+        )
+        value = self._client.execute(script).value
+        if value is None:
+            return None
+        return VisibilityState(
+            general=bool(value["general"]),
+            viewport=bool(value["viewport"]),
+            render=bool(value["render"]),
+            simulation=(
+                None if value.get("simulation") is None else bool(value["simulation"])
+            ),
+        )
 
     def bounding_box(self) -> dict | None:
         """Return the world-space axis-aligned bounding box.

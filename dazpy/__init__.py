@@ -17,7 +17,7 @@ __version__ = "2.9.0"
 
 from ._client import DazClient
 from ._scene import DazScene
-from ._node import DazNode, NodeIdentifier
+from ._node import DazNode, NodeIdentifier, VisibilityState
 from ._skeleton import DazSkeleton
 from ._bone import DazBone
 from ._camera import DazCamera
@@ -126,6 +126,7 @@ __all__ = [
     "DazScene",
     "DazNode",
     "NodeIdentifier",
+    "VisibilityState",
     "DazSkeleton",
     "DazBone",
     "DazCamera",

@@ -1,5 +1,6 @@
 build/
 build-sdk6/
+build-sdk6-compatible/
 dist/
 *.egg-info/
 docs/_build/
