@@ -184,8 +184,9 @@ flowchart TD
   Python callers must share; it must not contain application assets or policy
 - Exposes a versioned `DSS` global. Version 1 owns exact node lookup with
   missing/duplicate diagnostics, complete visibility reads and writes across
-  node/object properties and the four independent channels, and structured
-  progress/log/output JSONL emission for observable jobs
+  node/object properties and the four independent channels, applied/read-back
+  persistent render settings and Iray caps, and structured progress/log/output
+  JSONL emission for observable jobs
 - `dazpy` methods call this runtime rather than carrying a second DazScript
   implementation; file-backed recipes can call the same contract directly
 

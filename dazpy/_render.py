@@ -564,14 +564,8 @@ class DazRenderSettings:
     def set_resolution(self, width: int, height: int) -> None:
         """Set the render image size in pixels."""
         w, h = int(width), int(height)
-        # QSize is exposed as a constructor in DazScript; plain object literals
-        # are not coerced, so new QSize(w, h) is required.
         script = ScriptBuilder.iife(f"""
-            var mgr = {self._render_mgr()};
-            if (!mgr) return;
-            var opts = mgr.getRenderOptions();
-            opts.imageSize = new QSize({w}, {h});
-            opts.applyChanges();
+            return DSS.render.configure({{width:{w}, height:{h}}});
         """)
         self._client.execute(script)
 
@@ -588,11 +582,7 @@ class DazRenderSettings:
     @output_path.setter
     def output_path(self, path: str) -> None:
         script = ScriptBuilder.iife(f"""
-            var mgr = {self._render_mgr()};
-            if (!mgr) return;
-            var opts = mgr.getRenderOptions();
-            opts.renderImgFilename = {json.dumps(path)};
-            opts.applyChanges();
+            return DSS.render.configure({{outputPath:{json.dumps(path)}}});
         """)
         self._client.execute(script)
 
@@ -690,9 +680,12 @@ class DazRenderSettings:
             if (!mgr) return {{success: false, output_path: null}};
             var cam = {cam_expr};
             if (!cam) return {{success: false, output_path: null}};
+            DSS.render.configure({{
+                camera: cam,
+                directToFile: true,
+                renderViewport: false
+            }});
             var opts = mgr.getRenderOptions();
-            opts.camera = cam;
-            opts.renderImgToId = DzRenderOptions.DirectToFile;
             // findCanvasDefinition(name, true) implicitly reassigns the
             // "Active Canvas" property to whatever canvas was most recently
             // created/looked-up (confirmed against a live instance). Once
@@ -766,7 +759,10 @@ class DazRenderSettings:
 
     @max_samples.setter
     def max_samples(self, value: int) -> None:
-        self._set_iray_property("Max Samples", int(value))
+        script = ScriptBuilder.iife(
+            f"return DSS.render.setIrayCaps({{maxSamples:{int(value)}}});"
+        )
+        self._client.execute(script)
 
     @property
     def max_time_secs(self) -> int | None:
@@ -776,7 +772,10 @@ class DazRenderSettings:
 
     @max_time_secs.setter
     def max_time_secs(self, value: int) -> None:
-        self._set_iray_property("Max Time", int(value))
+        script = ScriptBuilder.iife(
+            f"return DSS.render.setIrayCaps({{maxTime:{int(value)}}});"
+        )
+        self._client.execute(script)
 
     @property
     def quality(self) -> float | None:
@@ -804,8 +803,12 @@ class DazRenderSettings:
                 f"Unknown quality preset {preset!r}; expected one of "
                 f"{sorted(_QUALITY_PRESETS)}"
             )
-        self._set_iray_property("Max Samples", settings["max_samples"])
-        self._set_iray_property("Max Time", settings["max_time"])
+        caps = ScriptBuilder.iife(
+            "return DSS.render.setIrayCaps({"
+            f"maxSamples:{settings['max_samples']},maxTime:{settings['max_time']}"
+            "});"
+        )
+        self._client.execute(caps)
         self._set_iray_property("Rendering Quality Enable", settings["quality_enable"])
         if "quality" in settings:
             self._set_iray_property("Rendering Quality", settings["quality"])

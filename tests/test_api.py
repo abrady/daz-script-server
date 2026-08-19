@@ -207,15 +207,53 @@ class TestSharedDazScriptRuntime(unittest.TestCase):
         r = execute(
             script=iife(
                 "return {version:DSS.version,hasNodes:!!DSS.nodes,"
-                "hasVisibility:!!DSS.visibility};"
+                "hasRender:!!DSS.render,hasVisibility:!!DSS.visibility};"
             )
         )
         body = r.json()
         self.assertTrue(body["success"], body.get("error"))
         self.assertEqual(
             body["result"],
-            {"version": 1, "hasNodes": True, "hasVisibility": True},
+            {
+                "version": 1,
+                "hasNodes": True,
+                "hasRender": True,
+                "hasVisibility": True,
+            },
         )
+
+    def test_render_configuration_applies_and_verifies_persistent_options(self):
+        script = iife(
+            "var mgr=App.getRenderMgr(),opts=mgr.getRenderOptions(),size=opts.imageSize; "
+            "var before={path:String(opts.renderImgFilename||''),width:Number(size.width),"
+            "height:Number(size.height),toId:opts.renderImgToId,type:opts.renderType,"
+            "viewport:!!opts.renderViewport}; "
+            "try { "
+            " var state=DSS.render.configure({outputPath:'C:/renders/dss-contract.png',"
+            "width:321,height:123,directToFile:true,software:true,renderViewport:false}); "
+            " var caps=DSS.render.setIrayCaps({}); "
+            " return {state:state,caps:caps}; "
+            "} finally { "
+            " opts=mgr.getRenderOptions(); opts.renderImgFilename=before.path; "
+            " opts.imageSize=new QSize(before.width,before.height); "
+            " opts.renderImgToId=before.toId; opts.renderType=before.type; "
+            " opts.renderViewport=before.viewport; opts.applyChanges(); "
+            "}"
+        )
+        r = execute(script=script)
+        body = r.json()
+        self.assertTrue(body["success"], body.get("error"))
+        result = body["result"]
+        self.assertEqual(result["state"]["outputPath"], "C:/renders/dss-contract.png")
+        self.assertEqual(
+            [result["state"]["width"], result["state"]["height"]],
+            [321, 123],
+        )
+        self.assertTrue(result["state"]["directToFile"])
+        self.assertTrue(result["state"]["software"])
+        self.assertFalse(result["state"]["renderViewport"])
+        self.assertIsInstance(result["caps"]["maxSamples"], (int, float))
+        self.assertIsInstance(result["caps"]["maxTime"], (int, float))
 
     def test_node_lookup_reports_missing_and_ambiguous_matches(self):
         script = iife(
