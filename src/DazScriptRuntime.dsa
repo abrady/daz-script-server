@@ -414,6 +414,108 @@ var DSS = (function () {
         return requireSceneIdentity(required);
     }
 
+    function simulationContext() {
+        var manager = App.getSimulationMgr();
+        if (!manager) throw new Error("DSS.simulation: simulation manager unavailable");
+        return manager;
+    }
+
+    function frameRange(range, step) {
+        return {
+            start: Math.round(Number(range.start) / step),
+            end: Math.round(Number(range.end) / step)
+        };
+    }
+
+    function simulationState() {
+        var manager = simulationContext();
+        var engine = manager.getActiveSimulationEngine();
+        var step = Number(Scene.getTimeStep());
+        return {
+            running: !!manager.isSimulating(),
+            engineClass: engine && engine.className ? String(engine.className()) : null,
+            engineName: engine && engine.getName ? String(engine.getName()) : null,
+            currentFrame: Scene.getFrame(),
+            animation: frameRange(Scene.getAnimRange(), step),
+            playback: frameRange(Scene.getPlayRange(), step)
+        };
+    }
+
+    function clearSimulation() {
+        var manager = simulationContext();
+        if (manager.isSimulating()) {
+            throw new Error("DSS.simulation.clear: simulation is still running");
+        }
+        if (Scene.getNumNodes() === 0) {
+            throw new Error("DSS.simulation.clear: refusing empty scene; dForce may block while initializing with nothing to clear");
+        }
+        manager.clearSimulation();
+        var state = simulationState();
+        if (state.running) throw new Error("DSS.simulation.clear: manager remained busy");
+        return state;
+    }
+
+    function configureSimulation(spec) {
+        spec = spec || {};
+        var hasStart = spec.startFrame !== undefined && spec.startFrame !== null;
+        var hasEnd = spec.endFrame !== undefined && spec.endFrame !== null;
+        if (hasStart !== hasEnd) {
+            throw new Error("DSS.simulation.configure: startFrame and endFrame must be supplied together");
+        }
+        if (hasStart) {
+            var start = Number(spec.startFrame), end = Number(spec.endFrame);
+            if (start < 0 || end < start || Math.floor(start) !== start || Math.floor(end) !== end) {
+                throw new Error("DSS.simulation.configure: frame range must be non-negative ordered integers");
+            }
+            var step = Scene.getTimeStep();
+            var range = new DzTimeRange(start * step, end * step);
+            Scene.setAnimRange(range);
+            Scene.setPlayRange(range);
+        }
+        if (spec.currentFrame !== undefined && spec.currentFrame !== null) {
+            Scene.setFrame(Number(spec.currentFrame));
+        }
+        if (spec.clear === true) clearSimulation();
+        var state = simulationState();
+        if (hasStart &&
+            (state.animation.start !== Number(spec.startFrame) ||
+             state.animation.end !== Number(spec.endFrame) ||
+             state.playback.start !== Number(spec.startFrame) ||
+             state.playback.end !== Number(spec.endFrame))) {
+            throw new Error("DSS.simulation.configure: frame range failed readback");
+        }
+        if (spec.currentFrame !== undefined && spec.currentFrame !== null &&
+            state.currentFrame !== Number(spec.currentFrame)) {
+            throw new Error("DSS.simulation.configure: current frame failed readback");
+        }
+        return state;
+    }
+
+    function runSimulation(nodes) {
+        var manager = simulationContext();
+        var started = new Date().getTime();
+        var error = null;
+        if (nodes !== undefined && nodes !== null) {
+            if (!(nodes instanceof Array) || !nodes.length) {
+                throw new Error("DSS.simulation.run: nodes must be a non-empty array or omitted");
+            }
+            var engine = manager.getActiveSimulationEngine();
+            if (!engine) {
+                return { success: false, error: "no_active_engine", durationMs: 0,
+                         state: simulationState() };
+            }
+            error = engine.customSimulate(nodes);
+        } else {
+            error = manager.simulate();
+        }
+        return {
+            success: !error,
+            error: error ? String(error) : null,
+            durationMs: new Date().getTime() - started,
+            state: simulationState()
+        };
+    }
+
     function reportPath() {
         try {
             if (typeof getArguments !== "function") return "";
@@ -501,6 +603,12 @@ var DSS = (function () {
             identity: sceneIdentity,
             require: requireSceneIdentity,
             load: loadScene
+        },
+        simulation: {
+            state: simulationState,
+            configure: configureSimulation,
+            clear: clearSimulation,
+            run: runSimulation
         },
         visibility: { read: readVisibility, set: setVisibility },
         report: {

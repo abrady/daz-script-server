@@ -3494,19 +3494,34 @@ class TestDazSceneDForceSimulation(unittest.TestCase):
         scene = self._scene(True)
         self.assertTrue(scene.is_simulating())
         script = scene._client.execute.call_args[0][0]
-        self.assertIn("getSimulationMgr", script)
-        self.assertIn("isSimulating", script)
+        self.assertIn("DSS.simulation.state", script)
 
     def test_is_simulating_false(self):
         scene = self._scene(False)
         self.assertFalse(scene.is_simulating())
 
-    def test_clear_dforce_simulation_calls_clearSimulation(self):
+    def test_clear_dforce_simulation_delegates_verified_clear(self):
         scene = self._scene(None)
         scene.clear_dforce_simulation()
         script = scene._client.execute.call_args[0][0]
-        self.assertIn("getSimulationMgr", script)
-        self.assertIn("clearSimulation", script)
+        self.assertIn("DSS.simulation.clear", script)
+
+    def test_configure_dforce_simulation_sets_both_ranges_and_current_frame(self):
+        state = {
+            "animation": {"start": 0, "end": 75},
+            "playback": {"start": 0, "end": 75},
+            "currentFrame": 75,
+        }
+        scene = self._scene(state)
+        self.assertEqual(
+            scene.configure_dforce_simulation(0, 75, current_frame=75, clear=True), state
+        )
+        script = scene._client.execute.call_args[0][0]
+        self.assertIn("DSS.simulation.configure", script)
+        self.assertIn("startFrame:0", script)
+        self.assertIn("endFrame:75", script)
+        self.assertIn("currentFrame:75", script)
+        self.assertIn("clear:true", script)
 
     def test_run_dforce_simulation_wait_false_submits_async(self):
         scene = self._scene()
@@ -3514,8 +3529,7 @@ class TestDazSceneDForceSimulation(unittest.TestCase):
         request_id = scene.run_dforce_simulation(wait=False)
         self.assertEqual(request_id, "req-123")
         script = scene._client.execute_async_submit.call_args[0][0]
-        self.assertIn("getSimulationMgr", script)
-        self.assertIn("mgr.simulate()", script)
+        self.assertIn("DSS.simulation.run()", script)
 
     def test_run_dforce_simulation_with_nodes_uses_customSimulate(self):
         scene = self._scene()
@@ -3523,9 +3537,15 @@ class TestDazSceneDForceSimulation(unittest.TestCase):
         node = DazNode(scene._client, NodeIdentifier("Skirt"))
         scene.run_dforce_simulation(nodes=[node], wait=False)
         script = scene._client.execute_async_submit.call_args[0][0]
-        self.assertIn("customSimulate", script)
-        self.assertIn("getActiveSimulationEngine", script)
+        self.assertIn("DSS.simulation.run([", script)
         self.assertIn("Skirt", script)
+
+    def test_run_dforce_simulation_preserves_explicit_empty_selection(self):
+        scene = self._scene()
+        scene._client.execute_async_submit.return_value = "req-empty"
+        scene.run_dforce_simulation(nodes=[], wait=False)
+        script = scene._client.execute_async_submit.call_args[0][0]
+        self.assertIn("DSS.simulation.run([])", script)
 
     def test_run_dforce_simulation_wait_true_returns_none_on_success(self):
         scene = self._scene()
