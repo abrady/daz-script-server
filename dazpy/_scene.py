@@ -693,15 +693,24 @@ class DazScene:
 
     # ── Scene I/O ──────────────────────────────────────────────────────────────
 
-    def load(self, path: str) -> None:
-        """Load a scene file (merge mode — does not clear the existing scene).
+    def load(
+        self, path: str, *, replace: bool = False, min_nodes: int | None = None
+    ) -> None:
+        """Load and verify a scene file with explicit merge/replace semantics.
 
         Args:
             path: Absolute path to the ``.daz`` or ``.duf`` file on the server
                 host.
+            replace: Clear the current scene before loading. Defaults to
+                ``False`` for backwards-compatible merge behavior.
+            min_nodes: Optional minimum total node count required after load.
         """
+        fields = [f"replace:{'true' if replace else 'false'}"]
+        if min_nodes is not None:
+            fields.append(f"minNodes:{int(min_nodes)}")
         script = ScriptBuilder.iife(
-            f"Scene.loadScene({ScriptBuilder.escape_string(path)}, 0);"
+            "return DSS.scene.load("
+            f"{ScriptBuilder.escape_string(path)},{{{','.join(fields)}}});"
         )
         self._client.execute(script)
 
@@ -877,13 +886,24 @@ class DazScene:
 
     def filename(self) -> str:
         """Return the file path of the currently loaded scene, or an empty string."""
-        script = ScriptBuilder.iife("return Scene.getFilename();")
+        script = ScriptBuilder.iife("return DSS.scene.identity().filename;")
         return self._client.execute(script).value or ""
 
     def needs_save(self) -> bool:
         """Return ``True`` if the scene has unsaved changes."""
-        script = ScriptBuilder.iife("return Scene.needsSave();")
+        script = ScriptBuilder.iife("return DSS.scene.identity().needsSave;")
         return bool(self._client.execute(script).value)
+
+    def identity(self) -> dict:
+        """Return verified file, node-count, existence, and dirty-state facts."""
+        script = ScriptBuilder.iife("return DSS.scene.identity();")
+        return self._client.execute(script).value or {
+            "filename": "",
+            "normalizedFilename": "",
+            "fileExists": False,
+            "nodeCount": 0,
+            "needsSave": False,
+        }
 
     # ── Playback range ─────────────────────────────────────────────────────────
 

@@ -3323,13 +3323,20 @@ class TestDazSceneIO(unittest.TestCase):
     def _scene(self, return_value):
         return DazScene(_make_client(return_value))
 
-    def test_load_calls_loadScene_with_path(self):
+    def test_load_delegates_with_explicit_merge_semantics(self):
         scene = self._scene(None)
         scene.load("/path/to/scene.duf")
         script = scene._client.execute.call_args[0][0]
-        self.assertIn("loadScene", script)
+        self.assertIn("DSS.scene.load", script)
         self.assertIn("/path/to/scene.duf", script)
-        self.assertIn(", 0", script)
+        self.assertIn("replace:false", script)
+
+    def test_load_replace_and_minimum_nodes_are_explicit(self):
+        scene = self._scene(None)
+        scene.load("/path/to/scene.duf", replace=True, min_nodes=100)
+        script = scene._client.execute.call_args[0][0]
+        self.assertIn("replace:true", script)
+        self.assertIn("minNodes:100", script)
 
     def test_save_calls_saveScene_with_path(self):
         scene = self._scene(None)
@@ -3343,7 +3350,7 @@ class TestDazSceneIO(unittest.TestCase):
         result = scene.filename()
         self.assertEqual(result, "/some/file.duf")
         script = scene._client.execute.call_args[0][0]
-        self.assertIn("getFilename", script)
+        self.assertIn("DSS.scene.identity", script)
 
     def test_filename_returns_empty_string_when_none(self):
         scene = self._scene(None)
@@ -3359,6 +3366,18 @@ class TestDazSceneIO(unittest.TestCase):
     def test_needs_save_false(self):
         scene = self._scene(False)
         self.assertFalse(scene.needs_save())
+
+    def test_identity_returns_shared_scene_facts(self):
+        expected = {
+            "filename": "C:/scene.duf",
+            "normalizedFilename": "c:/scene.duf",
+            "fileExists": True,
+            "nodeCount": 12,
+            "needsSave": False,
+        }
+        scene = self._scene(expected)
+        self.assertEqual(scene.identity(), expected)
+        self.assertIn("DSS.scene.identity", scene._client.execute.call_args[0][0])
 
     def test_play_range_returns_dict(self):
         scene = self._scene({"start": 0, "end": 240})

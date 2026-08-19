@@ -359,6 +359,61 @@ var DSS = (function () {
         return actual;
     }
 
+    function normalizedPath(path) {
+        var value = String(path || "").replace(/\\/g, "/");
+        while (value.indexOf("//") >= 0) value = value.replace(/\/\//g, "/");
+        if (/^[A-Za-z]:\//.test(value)) value = value.toLowerCase();
+        return value;
+    }
+
+    function sceneIdentity() {
+        var filename = String(Scene.getFilename() || "");
+        return {
+            filename: filename,
+            normalizedFilename: normalizedPath(filename),
+            fileExists: filename ? (new DzFileInfo(filename)).exists() : false,
+            nodeCount: Scene.getNumNodes(),
+            needsSave: !!Scene.needsSave()
+        };
+    }
+
+    function requireSceneIdentity(spec) {
+        spec = spec || {};
+        var identity = sceneIdentity();
+        if (spec.path !== undefined && spec.path !== null &&
+            identity.normalizedFilename !== normalizedPath(spec.path)) {
+            throw new Error("DSS.scene.require: expected file '" + String(spec.path) +
+                            "' but Studio reports '" + identity.filename + "'");
+        }
+        if (spec.minNodes !== undefined && spec.minNodes !== null &&
+            identity.nodeCount < Number(spec.minNodes)) {
+            throw new Error("DSS.scene.require: expected at least " + Number(spec.minNodes) +
+                            " nodes but found " + identity.nodeCount +
+                            (identity.filename ? " in '" + identity.filename + "'" : ""));
+        }
+        return identity;
+    }
+
+    function loadScene(path, spec) {
+        path = String(path || "");
+        spec = spec || {};
+        if (!path) throw new Error("DSS.scene.load: path is required");
+        if (!spec.hasOwnProperty("replace")) {
+            throw new Error("DSS.scene.load: replace must be explicitly true or false");
+        }
+        if (!(new DzFileInfo(path)).exists()) {
+            throw new Error("DSS.scene.load: file not found: " + path);
+        }
+        if (spec.replace) Scene.clear();
+        Scene.loadScene(path, new DzFileIOSettings());
+        var required = {};
+        if (spec.replace && spec.verifyFilename !== false) required.path = path;
+        if (spec.minNodes !== undefined && spec.minNodes !== null) {
+            required.minNodes = Number(spec.minNodes);
+        }
+        return requireSceneIdentity(required);
+    }
+
     function reportPath() {
         try {
             if (typeof getArguments !== "function") return "";
@@ -441,6 +496,11 @@ var DSS = (function () {
             read: readRenderState,
             configure: configureRender,
             setIrayCaps: setIrayCaps
+        },
+        scene: {
+            identity: sceneIdentity,
+            require: requireSceneIdentity,
+            load: loadScene
         },
         visibility: { read: readVisibility, set: setVisibility },
         report: {
