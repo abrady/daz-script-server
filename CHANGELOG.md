@@ -4,6 +4,8 @@ All notable changes to DazScript Server are documented here.
 
 ## [Unreleased]
 
+## [2.10.0] - 2026-08-19
+
 ### Unified dazpy protocol surface
 
 `DazClient` and `AsyncDazClient` now own registered-script registration and

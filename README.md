@@ -1,6 +1,6 @@
 # DazScript Server
 
-**Version 2.9.0** | DAZ Studio 4.5+ | DAZ Studio 6.25+ | Windows & macOS
+**Version 2.10.0** | DAZ Studio 4.5+ | DAZ Studio 6.25+ | Windows & macOS
 
 [![Docs](https://img.shields.io/badge/docs-dazpy%20SDK-blue)](https://bluemoonfoundry.github.io/daz-script-server/)
 [![HTTP API](https://img.shields.io/badge/docs-HTTP%20API%20reference-blue)](https://bluemoonfoundry.github.io/daz-script-server/api-reference/)
@@ -82,6 +82,7 @@ Categories: fundamentals, character, animation, rendering, geometry, export, ml_
 ### Getting Started
 - [Quick Start](#-quick-start)
 - [Why This Exists](#why-this-exists)
+- [What's New in v2.10.0](#whats-new-in-v2100)
 - [What's New in v2.9.0](#whats-new-in-v290)
 - [What's New in v2.8.0](#whats-new-in-v280)
 - [What's New in v2.7.2](#whats-new-in-v272)
@@ -170,6 +171,64 @@ DAZ Studio is powerful for 3D content creation, but automation is limited to man
 
 ---
 
+## What's New in v2.10.0
+
+### Observable file-backed automation
+
+`POST /execute/async` now accepts a host-side `scriptFile` without flattening
+it into anonymous source, preserving `getScriptFileName()` and relative
+`include()` behavior. A job may also name a JSONL `reportFile`; status and
+result responses expose its structured progress, bounded log tail, and
+deduplicated output manifest while DAZ Studio's main thread is occupied.
+
+Both `DazClient` and `AsyncDazClient` expose file-job submission and the same
+typed registered-script, request, render-cancellation, health, export, and SSE
+protocol. Integrations no longer need to construct DAZ endpoint URLs or decode
+ordinary server failures themselves.
+
+```python
+from dazpy.aio import AsyncDazClient
+
+async def main():
+    async with AsyncDazClient() as client:
+        request_id = await client.execute_file_async_submit(
+            "C:/jobs/pose-probe.dsa",
+            report_file="C:/jobs/reports/pose-probe.jsonl",
+        )
+        result = await client.get_request_result(request_id, wait=True)
+        print(result["observation"])
+```
+
+### Shared verified DAZ runtime
+
+Every inline, registered, and file-backed script receives the same versioned
+`DSS` DazScript runtime. It owns the small DAZ invariants that repeatedly caused
+silent automation failures: all four visibility channels, exact node lookup,
+render-setting readback, scene identity and replacement policy, guarded
+simulation setup, and structured job reporting. Application-specific assets,
+poses, paths, and acceptance criteria remain in the calling project.
+
+### Complete node visibility
+
+DAZ nodes carry four independent switches: general, viewport, render, and
+simulation visibility. `DazNode.visibility_state()` reads all four in one call;
+`DazNode.set_visibility()` changes only the channels named by the caller and
+verifies their readback before returning. This prevents a general-visible node
+from remaining render-hidden and lets a collider stay simulation-visible while
+being hidden from the viewport and renderer.
+
+```python
+state = garment.visibility_state()
+garment.set_visibility(general=False, viewport=False, render=False)
+collider.set_visibility(general=False, viewport=False, render=False,
+                        simulation=True)
+```
+
+Both methods call the same injected `DSS.visibility` runtime used by file-backed
+recipes; the Python SDK is a typed caller, not a second copy of the rules.
+
+---
+
 ## What's New in v2.9.0
 
 ### 🎬 dazpy.cinematics — camera shot builders
@@ -205,26 +264,6 @@ skeleton; `reset_transforms()` zeroes a node's local position/rotation and
 resets scale to 1.0; `zero_figure()` drives every bone rotation and morph
 to zero while leaving the figure's root transform untouched by default.
 
-### 👁️ Complete node visibility
-
-DAZ nodes carry four independent switches: general, viewport, render, and
-simulation visibility. `DazNode.visibility_state()` reads all four in one call;
-`DazNode.set_visibility()` changes only the channels named by the caller and
-verifies their readback before returning. This prevents a general-visible node
-from remaining render-hidden and lets a collider stay simulation-visible while
-being hidden from the viewport and renderer.
-
-```python
-state = garment.visibility_state()
-garment.set_visibility(general=False, viewport=False, render=False)
-collider.set_visibility(general=False, viewport=False, render=False,
-                        simulation=True)
-```
-
-Both methods call the same injected `DSS.visibility` DazScript runtime used by
-file-backed recipes; the Python SDK is a typed caller, not a second copy of the
-visibility rules.
-
 ### 📐 dazpy.math3.AxisRemap — coordinate-space conversion
 
 A generic signed-axis-permutation converter for `Vec3`/`Quat`/
@@ -259,7 +298,7 @@ Async frameworks (FastAPI, FastMCP, ComfyUI custom nodes, asyncio/Temporal
 workflows) previously had to wrap every `DazClient` call in
 `asyncio.to_thread()` or hand-roll an `httpx.AsyncClient` wrapper.
 `dazpy.aio.AsyncDazClient` mirrors `DazClient`'s full method surface —
-`execute`, `execute_file`, inline/file async submit/status/result/list/cancel, render
+`execute`, `execute_file`, async submit/status/result/list/cancel, render
 submit/batch/animation, USD export, and server-health endpoints — as
 native `async def` methods backed by `httpx.AsyncClient`, including the
 same `retry_on_busy`/`max_wait` backoff semantics (via `asyncio.sleep`
@@ -270,19 +309,11 @@ from dazpy.aio import AsyncDazClient
 
 async def main():
     async with AsyncDazClient() as client:
-        request_id = await client.execute_file_async_submit("C:/jobs/pose-probe.dsa")
-        result = await client.get_request_result(request_id, wait=True)
-        print(result)
+        result = await client.execute("1 + 1;")
+        print(result.value)
 ```
 
 Requires the optional `httpx` dependency: `pip install dazpy[aio]`.
-
-Both clients also own the complete automation protocol used by integrations:
-registered-script registration/execution, request status/result/list/cancel,
-render cancellation, health checks, exports, and SSE event streams. Non-2xx
-server responses surface as typed `dazpy.exceptions` errors (including
-`ServerResponseError` for ordinary protocol rejections), so callers do not
-need to construct endpoint URLs or inspect raw HTTP responses.
 
 ### `DazClient` connection pooling + `close()`
 
@@ -872,7 +903,7 @@ automation code without authoring DazScript by hand.
 Download the `.whl` file from the [latest release](https://github.com/bluemoonfoundry/daz-script-server/releases/latest) and install it:
 
 ```bash
-pip install dazpy-2.9.0-py3-none-any.whl
+pip install dazpy-2.10.0-py3-none-any.whl
 ```
 
 Or install directly from the repo for development:
