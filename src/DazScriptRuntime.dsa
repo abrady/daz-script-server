@@ -90,8 +90,85 @@ var DSS = (function () {
         return actual;
     }
 
+    function reportPath() {
+        try {
+            if (typeof getArguments !== "function") return "";
+            var args = getArguments();
+            if (!args || !args.length || !args[0] || typeof args[0] !== "object") {
+                return "";
+            }
+            return args[0].__dssReportFile ? String(args[0].__dssReportFile) : "";
+        } catch (e) {
+            return "";
+        }
+    }
+
+    function appendReport(path, text) {
+        var previous = "";
+        try {
+            var info = new DzFileInfo(path);
+            if (info.exists()) {
+                var reader = new DzFile(path);
+                if (reader.open(DzFile.ReadOnly)) {
+                    previous = String(reader.read());
+                    reader.close();
+                }
+            }
+            var writer = new DzFile(path);
+            if (!writer.open(DzFile.WriteOnly)) return false;
+            writer.write(previous + text);
+            writer.close();
+            return true;
+        } catch (e) {
+            // Observation must never be able to break the job it observes.
+            return false;
+        }
+    }
+
+    function emitReport(event, explicitPath) {
+        var path = explicitPath ? String(explicitPath) : reportPath();
+        if (!path) return false;
+        try {
+            return appendReport(path, JSON.stringify(event) + "\n");
+        } catch (e) {
+            return false;
+        }
+    }
+
+    function progressReport(current, total, phase, message, explicitPath) {
+        var event = { type: "progress", current: current, total: total };
+        if (phase) event.phase = String(phase);
+        if (message) event.message = String(message);
+        return emitReport(event, explicitPath);
+    }
+
+    function logReport(message, level, source, explicitPath) {
+        var event = {
+            type: "log",
+            level: level ? String(level) : "info",
+            message: String(message)
+        };
+        if (source) event.source = String(source);
+        return emitReport(event, explicitPath);
+    }
+
+    function outputReport(path, kind, label, metadata, explicitPath) {
+        var event = { type: "output", path: String(path) };
+        if (kind) event.kind = String(kind);
+        if (label) event.label = String(label);
+        if (metadata) event.metadata = metadata;
+        return emitReport(event, explicitPath);
+    }
+
     return {
         version: 1,
-        visibility: { read: readVisibility, set: setVisibility }
+        visibility: { read: readVisibility, set: setVisibility },
+        report: {
+            path: reportPath,
+            emit: emitReport,
+            progress: progressReport,
+            log: logReport,
+            output: outputReport
+        }
     };
 })();
