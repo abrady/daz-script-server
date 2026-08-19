@@ -76,7 +76,9 @@ class TestDazClientAsyncFileSubmit(unittest.TestCase):
 
         try:
             request_id = client.execute_file_async_submit(
-                "C:/scripts/pose-probe.dsa", args={"mode": "probe"}
+                "C:/scripts/pose-probe.dsa",
+                args={"mode": "probe"},
+                report_file="C:/runs/probe/job.jsonl",
             )
         finally:
             original_session.close()
@@ -87,6 +89,7 @@ class TestDazClientAsyncFileSubmit(unittest.TestCase):
             json={
                 "scriptFile": "C:/scripts/pose-probe.dsa",
                 "args": {"mode": "probe"},
+                "reportFile": "C:/runs/probe/job.jsonl",
             },
             headers={},
             timeout=30.0,
