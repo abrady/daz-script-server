@@ -127,12 +127,15 @@ class AsyncDazClient:
         return await self._with_busy_retry(_do, retry_on_busy, max_wait)
 
     async def execute_async_submit(
-        self, script: str, args: object = None, *, retry_on_busy: bool = False, max_wait: float = 30.0
+        self, script: str, args: object = None, *, report_file: str | None = None,
+        retry_on_busy: bool = False, max_wait: float = 30.0
     ) -> str:
         """Submit a script for async execution. See :meth:`dazpy.DazClient.execute_async_submit`."""
         payload: dict = {"script": script}
         if args is not None:
             payload["args"] = args
+        if report_file is not None:
+            payload["reportFile"] = report_file
 
         async def _do():
             resp = await self._post("/execute/async", payload)
@@ -142,7 +145,8 @@ class AsyncDazClient:
         return await self._with_busy_retry(_do, retry_on_busy, max_wait)
 
     async def execute_file_async_submit(
-        self, script_file: str, args: object = None, *, retry_on_busy: bool = False, max_wait: float = 30.0
+        self, script_file: str, args: object = None, *, report_file: str | None = None,
+        retry_on_busy: bool = False, max_wait: float = 30.0
     ) -> str:
         """Submit a host-side ``.dsa`` file asynchronously.
 
@@ -151,6 +155,8 @@ class AsyncDazClient:
         payload: dict = {"scriptFile": script_file}
         if args is not None:
             payload["args"] = args
+        if report_file is not None:
+            payload["reportFile"] = report_file
 
         async def _do():
             resp = await self._post("/execute/async", payload)
