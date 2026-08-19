@@ -995,13 +995,38 @@ class DazScene:
 
     def is_simulating(self) -> bool:
         """Return ``True`` if a dForce simulation is currently running."""
-        script = ScriptBuilder.iife("return App.getSimulationMgr().isSimulating();")
+        script = ScriptBuilder.iife("return DSS.simulation.state().running;")
         return bool(self._client.execute(script).value)
 
     def clear_dforce_simulation(self) -> None:
         """Discard all cached dForce simulation data for the active engine."""
-        script = ScriptBuilder.iife("App.getSimulationMgr().clearSimulation();")
+        script = ScriptBuilder.iife("return DSS.simulation.clear();")
         self._client.execute(script)
+
+    def configure_dforce_simulation(
+        self,
+        start_frame: int,
+        end_frame: int,
+        *,
+        current_frame: int | None = None,
+        clear: bool = False,
+    ) -> dict:
+        """Set both simulation timeline ranges, optionally clear, and verify readback.
+
+        Clearing can initialize the simulation engine and take many seconds even
+        on an empty scene, so it is opt-in rather than a setup side effect.
+        """
+        fields = [
+            f"startFrame:{int(start_frame)}",
+            f"endFrame:{int(end_frame)}",
+            f"clear:{'true' if clear else 'false'}",
+        ]
+        if current_frame is not None:
+            fields.append(f"currentFrame:{int(current_frame)}")
+        script = ScriptBuilder.iife(
+            f"return DSS.simulation.configure({{{','.join(fields)}}});"
+        )
+        return self._client.execute(script).value or {}
 
     def run_dforce_simulation(
         self,
@@ -1035,21 +1060,11 @@ class DazScene:
             :class:`~dazpy.exceptions.ScriptRuntimeError`: If the simulation
                 engine reports an error.
         """
-        if nodes:
+        if nodes is not None:
             node_exprs = ",".join(ScriptBuilder.find_node_expr(n._identifier) for n in nodes)
-            body = f"""
-                var mgr = App.getSimulationMgr();
-                var engine = mgr.getActiveSimulationEngine();
-                if (!engine) return {{"error": "no_active_engine"}};
-                var err = engine.customSimulate([{node_exprs}]);
-                return {{"error": err ? String(err) : null}};
-            """
+            body = f"return DSS.simulation.run([{node_exprs}]);"
         else:
-            body = """
-                var mgr = App.getSimulationMgr();
-                var err = mgr.simulate();
-                return {"error": err ? String(err) : null};
-            """
+            body = "return DSS.simulation.run();"
         script = ScriptBuilder.iife(body)
 
         if not wait:

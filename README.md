@@ -2479,6 +2479,15 @@ and can require `minNodes`; replacement loads also verify that Studio reports
 the requested file afterward. `require(spec)` applies the same filename and
 minimum-node assertions to an already-loaded scene.
 
+`DSS.simulation.state()` reports the active engine, running state, current
+frame, and both timeline ranges. `configure(spec)` changes the animation and
+playback ranges together and verifies their readback; clearing is opt-in.
+`clear()` refuses an empty scene because Daz may spend a long time initializing
+dForce with nothing to clear. `run(nodes)` returns a structured result for a
+whole-scene or selected-node simulation and should be invoked through the
+server's asynchronous job endpoint because real simulations can take minutes.
+The matching `DazScene` helpers delegate to this contract.
+
 `DSS.report` owns the structured JSONL observation vocabulary. `path()` reads
 the job's injected report path; `emit(event)`, `progress(...)`, `log(...)`, and
 `output(...)` append events without allowing an observation failure to break

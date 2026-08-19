@@ -209,7 +209,7 @@ class TestSharedDazScriptRuntime(unittest.TestCase):
             script=iife(
                 "return {version:DSS.version,hasNodes:!!DSS.nodes,"
                 "hasRender:!!DSS.render,hasScene:!!DSS.scene,"
-                "hasVisibility:!!DSS.visibility};"
+                "hasSimulation:!!DSS.simulation,hasVisibility:!!DSS.visibility};"
             )
         )
         body = r.json()
@@ -221,6 +221,7 @@ class TestSharedDazScriptRuntime(unittest.TestCase):
                 "hasNodes": True,
                 "hasRender": True,
                 "hasScene": True,
+                "hasSimulation": True,
                 "hasVisibility": True,
             },
         )
@@ -293,6 +294,37 @@ class TestSharedDazScriptRuntime(unittest.TestCase):
         finally:
             if scene_path and os.path.exists(scene_path):
                 os.unlink(scene_path)
+
+    def test_simulation_setup_sets_both_ranges_and_verifies(self):
+        script = iife(
+            "var step=Scene.getTimeStep(),anim=Scene.getAnimRange(),play=Scene.getPlayRange(); "
+            "var before={as:anim.start,ae:anim.end,ps:play.start,pe:play.end,"
+            "frame:Scene.getFrame()}; "
+            "try { "
+            " var state=DSS.simulation.configure({startFrame:0,endFrame:12,"
+            "currentFrame:6,clear:false}); "
+            " var incomplete=''; try { DSS.simulation.configure({startFrame:0}); } "
+            " catch(e) { incomplete=String(e); } "
+            " var empty=''; try { DSS.simulation.run([]); } catch(e2) { empty=String(e2); } "
+            " var emptyClear=''; try { DSS.simulation.clear(); } catch(e3) { emptyClear=String(e3); } "
+            " return {state:state,incomplete:incomplete,empty:empty,emptyClear:emptyClear}; "
+            "} finally { "
+            " Scene.setAnimRange(new DzTimeRange(before.as,before.ae)); "
+            " Scene.setPlayRange(new DzTimeRange(before.ps,before.pe)); "
+            " Scene.setFrame(before.frame); "
+            "}"
+        )
+        r = execute(script=script)
+        body = r.json()
+        self.assertTrue(body["success"], body.get("error"))
+        result = body["result"]
+        self.assertEqual(result["state"]["animation"], {"start": 0, "end": 12})
+        self.assertEqual(result["state"]["playback"], {"start": 0, "end": 12})
+        self.assertEqual(result["state"]["currentFrame"], 6)
+        self.assertFalse(result["state"]["running"])
+        self.assertIn("supplied together", result["incomplete"])
+        self.assertIn("non-empty array", result["empty"])
+        self.assertIn("refusing empty scene", result["emptyClear"])
 
     def test_node_lookup_reports_missing_and_ambiguous_matches(self):
         script = iife(

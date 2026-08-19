@@ -186,7 +186,8 @@ flowchart TD
   missing/duplicate diagnostics, complete visibility reads and writes across
   node/object properties and the four independent channels, applied/read-back
   persistent render settings and Iray caps, explicit merge/replace scene loads
-  with file-identity and node-count verification, and structured
+  with file-identity and node-count verification, synchronized and verified
+  dForce timeline setup plus guarded clear/run operations, and structured
   progress/log/output JSONL emission for observable jobs
 - `dazpy` methods call this runtime rather than carrying a second DazScript
   implementation; file-backed recipes can call the same contract directly
